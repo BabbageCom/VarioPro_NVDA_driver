@@ -6,14 +6,11 @@ install:
 
 build_script:
   - c:\python37\scripts\scons
-  - c:\python37\scripts\scons pot
 
 artifacts:
   - path: '*.nvda-addon'
     name: addon
     type: application/x-nvda-addon
-  - path: '*.pot'
-    type: application/x-pot
 deploy:
   release: $(APPVEYOR_REPO_TAG_NAME)
   description: $(APPVEYOR_REPO_TAG_NAME)
