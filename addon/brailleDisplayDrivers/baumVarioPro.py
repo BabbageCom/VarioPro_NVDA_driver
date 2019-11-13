@@ -461,14 +461,6 @@ class BrailleDisplayDriver(braille.BrailleDisplayDriver):
 		super().__init__()
 		self.numCells = 0
 
-		self.VPS_IDLE = 0
-		self.VPS_W4_INFOTYPE = 1
-		self.VPS_W4_LENGTH = 2
-		self.VPS_GET_PAYLOAD = 3
-		self.bp_sm_state = self.VPS_IDLE
-		self.vp_pkt = bytearray()
-		self.vp_payload_len = 0
-
 		self._dev = None
 		self.bp_trans_prev_byte = 0  # BAUM protocol transport layer (ESC dedoubling)
 
@@ -514,10 +506,21 @@ class BrailleDisplayDriver(braille.BrailleDisplayDriver):
 				self._dev.close()
 
 	def _onReceive(self, data):
-		try:
-			self.decode_escape_transport(data)
-		except Exception as e:  # IOError?
-			log.error(e)
+		assert data[0] == 0x1b
+		packet = bytearray()
+		infoType = self._dev.read(1)[0]
+		if infoType == 0x1b:
+			# Discard the second escape
+			infoType = self._dev.read(1)[0]
+		packet.append(infoType)
+		if infoType not in (BAUM_VP_DEVICE_DETECTION, BAUM_VP_DYNAMIC_DATA_BLOCK):
+			log.error(f"Info byte expected, got {infoType!r}")
+			return
+		length = self._dev.read(1)[0]
+		packet.append(length)
+		payLoad = self._dev.read(length)
+		packet.extend(payLoad)
+		self.process_packet(packet)
 
 	def send_packet(self, cmd, payload):
 		dep = bytearray()
@@ -574,39 +577,6 @@ class BrailleDisplayDriver(braille.BrailleDisplayDriver):
 				log.error("module not connected or not supported")
 		else:
 			log.warning("invalid VP pkt")
-
-	def baumprotocol_receive_statemachine(self, b):	 # packetizing state machine
-		if self.bp_sm_state == self.VPS_IDLE:
-			if b == 0x1B:
-				self.vp_pkt = bytearray()
-			self.bp_sm_state = self.VPS_W4_INFOTYPE
-		elif self.bp_sm_state == self.VPS_W4_INFOTYPE:
-			self.vp_pkt.append(b)
-			if b in (0x50, 0x51):
-				self.bp_sm_state = self.VPS_W4_LENGTH
-			else:
-				self.bp_sm_state = self.VPS_IDLE
-
-		elif self.bp_sm_state == self.VPS_W4_LENGTH:
-			self.vp_pkt.append(b)
-			self.vp_payload_len = b
-			self.bp_sm_state = self.VPS_GET_PAYLOAD
-
-		elif self.bp_sm_state == self.VPS_GET_PAYLOAD:
-			self.vp_pkt.append(b)
-			self.vp_payload_len -= 1
-			if self.vp_payload_len == 0:
-				self.process_packet(self.vp_pkt)
-				self.bp_sm_state = self.VPS_IDLE
-
-	def decode_escape_transport(self, data):  # ESC transport decoding state machine
-		b = data[0]  # convert character to byte
-		if b == 0x1B and self.bp_trans_prev_byte == 0x1B:
-			# discard the second 0x1B
-			self.bp_trans_prev_byte = 0  # anything different from 0x1B
-			return
-		self.baumprotocol_receive_statemachine(b)
-		self.bp_trans_prev_byte = b
 
 	def braille_out_send(self, cells, moduleId):
 		if cells and moduleId:
