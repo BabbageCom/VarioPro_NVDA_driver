@@ -126,11 +126,12 @@ def direction(x):
 class VarioProModule:
 	""" A class to abstract all Vario Pro modules, including the main module """
 
+	number_cells = 0
+
 	def __init__(self, driver, module_id):
 		self.module_type = module_id[:2]
 		self.module_id = module_id
 		self.has_braille = False
-		self.number_cells = 0
 		self.input_handler = None
 		self.output_handler = driver.braille_out_send  # None for modules without Braille output
 
@@ -178,8 +179,8 @@ class VarioProMainModule(VarioProModule):
 			pass
 
 	def process_main_wheel_rotation(self, wheels):
-		for wi in wheels:
-			ws = signByte(wi)
+		for wi, w in enumerate(wheels):
+			ws = signByte(w)
 			if ws != 0:
 				for i in range(0, ws, direction(ws)):
 					if ws > 0:
@@ -533,7 +534,7 @@ class BrailleDisplayDriver(braille.BrailleDisplayDriver):
 
 	def vp_query_modules(self):
 		# For query the Device-ID and Serial Number must be 0
-		payload = bytearray("\x00\x00\x00\x00\x04")
+		payload = bytearray(b"\x00\x00\x00\x00\x04")
 		self.send_packet(BAUM_VP_DEVICE_DETECTION, payload)
 
 	def acknowledge_device_arrival(self, module_info):
